@@ -28,7 +28,6 @@ By completing this tutorial, you will:
 2. ✅ Understand the Workplace Assistant environment and its 26 tool-calling capabilities
 3. ✅ Configure and run GRPO training on Nemotron Nano v2 9B
 4. ✅ Monitor training progress via Weights & Biases (W&B)
-5. ✅ Achieve measurable improvements in tool-calling accuracy
 
 ---
 
@@ -199,45 +198,27 @@ The model must:
 
 ### Step 1: Enter a GPU Node
 
-SSH into a GPU node or use Slurm to allocate resources.
-
-**Option A: Interactive Slurm Session**
+Launch an interactive Slurm session to run training commands. See the [NeMo RL Cluster Setup documentation](https://docs.nvidia.com/nemo/rl/latest/cluster.html#interactive-launching) for full details.
 
 ```bash
-#!/bin/bash
+# Run from the root of NeMo RL repo
 NUM_ACTOR_NODES=1
-ACCOUNT=your_slurm_account
-JOB_NAME=nemo-gym-training
-PARTITION=interactive
-CONTAINER="/path/to/nemo-rl-container.sqsh"
-MOUNTS="/shared/filesystem:/shared/filesystem"
 
-srun \
+# Use the official NeMo RL container from NGC
+# See: https://catalog.ngc.nvidia.com/orgs/nvidia/containers/nemo-rl
+CONTAINER=nvcr.io/nvidia/nemo-rl:v0.4.0 \
+MOUNTS="/shared/filesystem:/shared/filesystem" \
+sbatch \
     --nodes=${NUM_ACTOR_NODES} \
-    --ntasks=1 \
-    --account=${ACCOUNT} \
-    --job-name=${JOB_NAME} \
-    --partition=${PARTITION} \
+    --account=your_slurm_account \
+    --job-name=grpo-interactive \
+    --partition=interactive \
     --time=04:00:00 \
     --gres=gpu:8 \
-    --no-container-mount-home \
-    --container-name=nemo-gym \
-    --container-workdir=/path/to/workspace \
-    --container-mounts="${MOUNTS}" \
-    --container-image="${CONTAINER}" \
-    --pty /bin/bash
-```
+    ray.sub
 
-**Option B: Standard Slurm Allocation**
-
-```bash
-srun \
-    --no-container-mount-home \
-    --container-mounts=/shared/filesystem:/shared/filesystem \
-    --container-image=/path/to/nemo-rl/container \
-    --gres=gpu:8 \
-    --nodes=1 --ntasks=1 --time=04:00:00 \
-    --pty /bin/bash
+# Once the job starts, attach to the head node:
+bash <SLURM_JOB_ID>-attach.sh
 ```
 
 ### Step 2: Clone and Setup NeMo RL + NeMo Gym
@@ -295,30 +276,7 @@ cd ../../.. && source /opt/nemo_rl_venv/bin/activate
 
 > **Note**: The `download_workplace_assistant.py` script downloads the dataset from HuggingFace (`nvidia/Nemotron-RL-agent-workplace_assistant`) and splits it into training (1,129 samples) and validation (126 samples) sets with a 90/10 ratio. The `ng_prepare_data` command then validates the data format and adds an `agent_ref` property to each example that tells NeMo Gym which agent server to route that example to.
 
-### Step 4: Set Environment Variables
-
-Create or export the following environment variables:
-
-```bash
-# Required: Hugging Face token for model downloads
-export HF_TOKEN="your_hugging_face_token"
-
-# Required: Weights & Biases API key for logging
-export WANDB_API_KEY="your_wandb_api_key"
-
-# Recommended: Local cache for HuggingFace models
-export HF_HOME=".cache/"
-
-# Optional: Force rebuild of virtual environments on first run
-export NRL_FORCE_REBUILD_VENVS=true
-
-# Optional: Set the CUDA architectures for GPU compilation.
-# The values "9.0" and "10.0" refer to NVIDIA H100 (SM90) and GH200 or B100 (SM100) GPUs, respectively.
-# Set if you are using H100, GH200, or B100 GPUs:
-export TORCH_CUDA_ARCH_LIST="9.0 10.0"
-```
-
-### Step 5: Run Sanity Tests (Optional but Recommended)
+### Step 4: Run Sanity Tests (Optional but Recommended)
 
 Validate your setup before training:
 
@@ -390,9 +348,9 @@ env:
 
 ## Running Training
 
-### Single Node Training
+### Single Node Training (Interactive Mode)
 
-Launch training on a single 8-GPU node:
+Run these commands **from inside the container** after attaching via the interactive session from Step 1:
 
 ```bash
 # Clean up any existing Ray/vLLM processes
@@ -407,93 +365,49 @@ EXP_NAME="$(date +%Y%m%d)/penguin_grpo/nemotron_nano_v2_9b/workplace_assistant_0
 CONFIG_PATH=examples/penguin/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml
 
 # Launch training
+# Set these environment variables before running:
+#   HF_TOKEN: Your Hugging Face token for model downloads
+#   WANDB_API_KEY: Your Weights & Biases API key for logging
+#   TORCH_CUDA_ARCH_LIST: CUDA architectures (9.0 for H100, 10.0 for B100/GH200)
+#   NRL_FORCE_REBUILD_VENVS: Set to true on first run to rebuild venvs
 TORCH_CUDA_ARCH_LIST="9.0 10.0" \
 HF_HOME=.cache/ \
-HF_TOKEN=${HF_TOKEN} \
-WANDB_API_KEY=${WANDB_API_KEY} \
+HF_TOKEN="your_hugging_face_token" \
+WANDB_API_KEY="your_wandb_api_key" \
 NRL_FORCE_REBUILD_VENVS=true \
 uv run python examples/penguin/run_grpo_penguin.py \
     --config=$CONFIG_PATH \
     logger.wandb.project="${USER}-nemo-gym-rl-integration" \
     logger.wandb.name=$EXP_NAME \
-    logger.log_dir=results/$EXP_NAME \
-    grpo.val_at_start=true \
-    grpo.val_period=6 \
-    grpo.num_prompts_per_step=8 \
-    grpo.num_generations_per_prompt=4 \
-    grpo.max_num_steps=36 \
-    grpo.max_num_epochs=1 \
-    ++cluster.num_nodes=1 \
-    checkpointing.enabled=true \
-    checkpointing.save_period=6
+    logger.log_dir=results/$EXP_NAME
 ```
-
-### Training Parameters Explained
-
-| Override | Value | Purpose |
-|----------|-------|---------|
-| `grpo.val_at_start=true` | true | Run validation before training starts |
-| `grpo.val_period=6` | 6 | Validate every 6 steps |
-| `grpo.num_prompts_per_step=8` | 8 | Prompts per step (batch) |
-| `grpo.num_generations_per_prompt=4` | 4 | Generations per prompt (32 total rollouts/step) |
-| `grpo.max_num_steps=36` | 36 | Total steps (~1 epoch over 1,129 samples) |
-| `checkpointing.save_period=6` | 6 | Save checkpoint every 6 steps |
 
 ### Multi-Node Training
 
-For production training, scale to multiple nodes:
+For production training, scale to multiple nodes by changing `cluster.num_nodes`. This example uses **batch mode** (the `COMMAND` variable specifies what to run automatically when the job starts).
+
+> **Note**: Run this command from the **Slurm login/head node**, not from inside the interactive container from Step 1. This submits a new batch job that will run independently.
 
 ```bash
-# Create submit script: temp_penguin_submit.sh
-cat << 'EOF' > temp_penguin_submit.sh
-# ----- PARAMETERS -----
-# WANDB_API_KEY, EXP_NAME, NUM_ACTOR_NODES, REPO_LOCATION
+# Set experiment name
+EXP_NAME="penguin_grpo/nemotron_nano_v2_9b/2nodes/workplace_assistant_001"
+CONFIG_PATH=examples/penguin/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml
 
-# ----- CONSTANTS -----
-CONTAINER_IMAGE_PATH=/path/to/nemo-rl/container
-
-read -r -d '' COMMAND <<CMDEOF
-cd ${REPO_LOCATION}
-
-HF_HOME=.cache/ \
-HF_HUB_OFFLINE=1 \
-WANDB_API_KEY=$WANDB_API_KEY \
-NRL_FORCE_REBUILD_VENVS=true \
-uv run python examples/penguin/run_grpo_penguin.py \
-    cluster.num_nodes=$NUM_ACTOR_NODES \
-    logger.wandb.name=$EXP_NAME \
-    logger.log_dir=results/$EXP_NAME \
-    checkpointing.checkpoint_dir=results/$EXP_NAME \
-    $@
-CMDEOF
-
-echo -e "Running command:\n$COMMAND"
-
-cd $REPO_LOCATION
-COMMAND=$COMMAND \
-CONTAINER=$CONTAINER_IMAGE_PATH \
+# Submit multi-node job
+# Set these environment variables before running:
+#   HF_TOKEN: Your Hugging Face token for model downloads
+#   WANDB_API_KEY: Your Weights & Biases API key for logging
+#   NUM_NODES: Number of GPU nodes to use (2, 4, 8, etc.)
+NUM_NODES=2
+COMMAND="TORCH_CUDA_ARCH_LIST='9.0 10.0' HF_HOME=.cache/ HF_TOKEN='your_hf_token' WANDB_API_KEY='your_wandb_api_key' uv run python examples/penguin/run_grpo_penguin.py --config=$CONFIG_PATH cluster.num_nodes=$NUM_NODES logger.wandb.project=${USER}-nemo-gym-rl-integration logger.wandb.name=$EXP_NAME logger.log_dir=results/$EXP_NAME checkpointing.checkpoint_dir=results/$EXP_NAME" \
+CONTAINER=nvcr.io/nvidia/nemo-rl:v0.4.0 \
 MOUNTS="/shared/filesystem:/shared/filesystem" \
 sbatch \
-    --nodes=$NUM_ACTOR_NODES \
+    --nodes=$NUM_NODES \
     --time=4:0:0 \
-    --job-name=$EXP_NAME \
+    --job-name=grpo-workplace-assistant \
     --gres=gpu:8 \
     ray.sub
-EOF
-
-chmod +x temp_penguin_submit.sh
-```
-
-**Submit the multi-node job:**
-
-```bash
-WANDB_API_KEY=${WANDB_API_KEY} \
-EXP_NAME="penguin_grpo/nemotron_nano_v2_9b/2nodes/workplace_assistant_001" \
-NUM_ACTOR_NODES=2 \
-REPO_LOCATION="/path/to/nemo-rl" \
-    ./temp_penguin_submit.sh \
-    --config=examples/penguin/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml \
-    logger.wandb.project="${USER}-nemo-gym-rl-integration"
 ```
 
 ---
@@ -530,6 +444,24 @@ Training is successful when:
 - ✅ Validation accuracy improves from baseline (~15%) to 50%+
 - ✅ No OOM (Out of Memory) errors
 - ✅ Checkpoints are saved at specified intervals
+
+### Validation Reward Plot
+
+<!-- TODO: Add validation reward plot showing improvement over training steps -->
+![Validation Reward Plot](images/val_reward_placeholder.png)
+*Expected: Validation reward increasing from ~0.15 to ~0.5+ over the course of training.*
+
+### Measuring Real-World Improvement with BFCL v3
+
+The Workplace Assistant environment's tool-calling tasks correlate with performance on the [Berkeley Function Calling Leaderboard (BFCL) v3](https://gorilla.cs.berkeley.edu/leaderboard.html) benchmark. To measure real-world improvement:
+
+1. **Before training**: Evaluate the base Nemotron Nano v2 9B model on BFCL v3
+2. **After training**: Evaluate your fine-tuned checkpoint on BFCL v3
+3. **Compare**: You should observe measurable improvement in tool-calling accuracy
+
+You can run BFCL v3 evaluations using [NeMo Evaluator](https://github.com/NVIDIA-NeMo/Evaluator), which supports BFCL v3 via the `nemo-skills` evaluation harness.
+
+See the [NeMo Evaluator documentation](https://github.com/NVIDIA-NeMo/Evaluator#-supported-benchmarks-and-evaluation-harnesses) for full setup instructions and supported benchmarks.
 
 ---
 
