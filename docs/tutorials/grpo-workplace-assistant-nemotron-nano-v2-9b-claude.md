@@ -10,13 +10,7 @@ This tutorial demonstrates how to train NVIDIA's Nemotron Nano v2 9B model using
 
 ## Time Estimate
 
-| Phase | Duration |
-|-------|----------|
-| Environment Setup | 15-20 minutes |
-| Data Preparation (`ng_prepare_data`) | 5-10 minutes |
-| Sanity Tests (optional) | 10-15 minutes |
-| Single Node Training | 2-4 hours (depending on steps) |
-| **Total** | **~3-5 hours** |
+**Total time: ~3-5 hours** (including environment setup, data preparation, and training)
 
 ---
 
@@ -24,27 +18,143 @@ This tutorial demonstrates how to train NVIDIA's Nemotron Nano v2 9B model using
 
 By completing this tutorial, you will:
 
-1. ✅ Set up NeMo RL and NeMo Gym for Reinforcement Learning (RL) training
-2. ✅ Understand the Workplace Assistant environment and its 26 tool-calling capabilities
-3. ✅ Configure and run GRPO training on Nemotron Nano v2 9B
-4. ✅ Monitor training progress via Weights & Biases (W&B)
+1. Set up NeMo RL and NeMo Gym for Reinforcement Learning (RL) training
+2. Understand the Workplace Assistant environment and its 26 tool-calling capabilities
+3. Configure and run GRPO training on Nemotron Nano v2 9B
+4. Monitor training progress via Weights & Biases (W&B)
 
 ---
 
 ## Prerequisites
 
-### Technical Level & Required Knowledge
-- **Intermediate to Advanced**: You should be comfortable with Python, LLM fine-tuning, and basic reinforcement learning concepts such as policy optimization, rewards, and rollouts. While detailed knowledge of the GRPO algorithm is not required, a general understanding is helpful.
-- Some basic knowledge of Slurm (for multi-node runs) is helpful. Example commands are provided below as well.
+### Technical Level & Required Knowledge: Intermediate to Advanced
+- You should be comfortable with Python, LLM fine-tuning, and basic reinforcement learning concepts such as policy optimization, rewards, and rollouts. While detailed knowledge of RLVR and the GRPO algorithm is not required, a general understanding is helpful.
+- Some basic knowledge of Slurm is helpful. That said, example commands are provided below.
 
 ### Hardware Requirements
-- **Minimum**: 8× NVIDIA GPUs with 80GB or more VRAM each (e.g., H100, A100). Note: NeMo Gym does not require GPUs; GPUs are only necessary for GRPO training with NeMo RL.
+
+**Minimum** 8× NVIDIA GPUs with 80GB or more VRAM each (e.g., H100, A100). 
+
+NeMo Gym does not require GPUs. GPUs are only necessary for GRPO training with NeMo RL.
+
 
 ### Required Accounts & Tokens
 | Service                | Purpose                  | How to Obtain                         |
 |------------------------|--------------------------|---------------------------------------|
 | Hugging Face (HF)      | Model and data downloads | [Create account](https://huggingface.co/join) |
-| Weights & Biases (W&B) | Training metrics logging | [Create account](https://wandb.ai/signup)      |
+| Weights & Biases (W&B) | Training metrics logging (optional but recommended) | [Create account](https://wandb.ai/signup)      |
+
+> **Note:** W&B is optional but recommended for tracking training metrics and visualizing progress.
+
+---
+
+## About the Environment
+
+The Workplace Assistant is a **multi-step agentic tool-use environment** that tests an AI agent's ability to execute business tasks in a simulated workplace setting.
+
+### Overview
+
+- **5 databases**: Email, Calendar, Analytics, Project Management, Customer Relationship Manager (CRM)
+- **26 tools** distributed across these databases
+- **690 tasks** representing common business activities (e.g., sending emails, scheduling meetings, managing projects)
+- **State-based verification**: Evaluates task completion by comparing final database states rather than exact action sequences
+
+### FastAPI Resource Server (`app.py`)
+
+The environment is implemented as a FastAPI-based resource server that manages tool execution and verification. Here's how it works:
+
+#### 1. Session Management
+
+Each rollout gets its own isolated session with fresh tool environments:
+
+```python
+async def seed_session(self, request: Request, body: BaseSeedSessionRequest):
+    session_id = request.session[SESSION_ID_KEY]
+    toolkits = [
+        "email",
+        "calendar",
+        "analytics",
+        "project_management",
+        "customer_relationship_manager",
+    ]
+    self.session_id_to_tool_env[session_id] = get_tools(toolkits)
+    return BaseSeedSessionResponse()
+```
+
+This ensures each task starts with a clean slate and tool calls from different rollouts don't interfere.
+
+#### 2. Dynamic Tool Routing
+
+Tool calls are routed to Python functions:
+
+```python
+def route_to_python_function(tool_name, arguments):
+    try:
+        result = tool_env["functions"][tool_name](**arguments)
+        return WorkbenchResponse(output=result)
+    except Exception as e:
+        # Return error to model so it can self-correct (don't terminate)
+        return WorkbenchResponse(output=f"Error executing tool: {str(e)}")
+```
+
+**Key feature**: Tool execution errors are returned to the model as part of the response (rather than terminating the rollout), allowing the agent to self-correct and retry during execution.
+
+#### 3. State Matching for Verification
+
+The environment uses **state-matching verification**: instead of requiring exact tool sequences, it compares final database states.
+
+```python
+async def verify(self, body: WorkbenchVerifyRequest) -> WorkbenchVerifyResponse:
+    ground_truth = body.ground_truth
+    response = body.response.output
+
+    total_score = 0.0
+
+    # Convert list of ResponseFunctionToolCall objects into list of dictionaries
+    predicted_function_calls = []
+    for message in response:
+        if message.type == "function_call":
+            predicted_function_calls.append(message.model_dump())
+
+    predicted_chat_content = []
+    for message in response:
+        if message.type == "output_text":
+            predicted_chat_content.append(message.model_dump())
+
+    total_score += is_correct(predicted_function_calls, ground_truth, None) * 1.0
+    return WorkbenchVerifyResponse(**body.model_dump(), reward=total_score)
+```
+
+The `is_correct` function implements the state-matching logic:
+
+```python
+def is_correct(predicted_actions, ground_truth_actions, error):
+    """
+    Checks if prediction is correct by comparing the state change 
+    after executing the actions.
+    """
+    if error:
+        return False
+    
+    # Execute both sequences in fresh environments
+    predict_env = execute_actions_and_reset_state(predicted_actions)
+    ground_truth_env = execute_actions_and_reset_state(ground_truth_actions)
+    
+    # Compare final states of all 5 databases (case-insensitive for most fields)
+    return (
+        predicted_calendar_state.equals(ground_truth_calendar_state) and
+        predicted_email_state.equals(ground_truth_email_state) and
+        predicted_analytics_state.equals(ground_truth_analytics_state) and
+        predicted_project_management_state.equals(ground_truth_project_management_state) and
+        predicted_customer_relationship_manager_state.equals(ground_truth_customer_relationship_manager_state)
+    )
+```
+
+**Why State-matching verification?**:
+- **Flexibility**: Multiple valid solution paths exist for the same task
+- **Robustness**: Agent can recover from mistakes mid-trajectory
+- **Goal-oriented**: Focuses on outcomes, not specific procedures
+
 
 ---
 
@@ -52,22 +162,28 @@ By completing this tutorial, you will:
 
 ### Workplace Assistant Dataset
 
-The Workplace Assistant dataset simulates realistic office productivity scenarios requiring multi-step tool usage.
+ [`The Workplace Assistant`](https://huggingface.co/datasets/nvidia/Nemotron-RL-agent-workplace_assistant) dataset contains **690 unique tasks** with a full dataset of **1,260 prompts** that simulate realistic office productivity scenarios requiring multi-step tool usage. Each task is presented as a natural language request that the model must decompose into appropriate tool calls (up to 6 steps per task). Tasks are evaluated using a **binary reward** (0 or 1) based on state matching.
 
-| Property | Value |
-|----------|-------|
-| **HuggingFace Dataset** | [`nvidia/Nemotron-RL-agent-workplace_assistant`](https://huggingface.co/datasets/nvidia/Nemotron-RL-agent-workplace_assistant) |
-| **Original Split** | `train` only (1,255 samples) |
-| **After Local Split** | 1,129 train / 126 validation (90/10) |
+### Dataset Structure
 
-### Available Tools (26 Total)
+Each sample in the dataset contains:
+- **System prompt**: Provides current date/time context and constraints (e.g., "Meetings must not start before 9am or end after 6pm")
+- **User query**: Natural language task description (e.g., "Reply to carlos's last email...")
+- **Available tools**: JSON schemas for all 26 functions the model can call
+- **Ground truth actions**: Reference solution as a sequence of tool calls (used for state-matching verification)
 
-The environment includes tools for:
-- 📅 **Calendar Management**: Schedule, modify, cancel meetings
-- 📧 **Email Operations**: Send, read, search emails
-- 📁 **File Management**: Create, read, modify documents
-- 📋 **Task Management**: Create and track to-do items
-- 🔍 **Search**: Query information across systems
+
+### Available Tools
+
+The environment provides 26 functions across five business domains, each operating on CSV-backed databases. The agent must select the right tools, extract parameters from natural language, and chain them together to complete tasks.
+
+**Tool Categories:**
+- 📧 **Email** (6 tools): send, search, reply, forward, delete, get by ID (e.g., `email_send_email`, `email_search_emails`)
+- 📅 **Calendar** (5 tools): create, search, update, delete, get by ID (e.g., `calendar_create_event`)
+- 📊 **Analytics** (6 tools): create plots, count metrics, get visitor data (e.g., `analytics_create_plot`, `analytics_engaged_users_count`)
+- 📋 **Project Management** (5 tools): create, search, update, delete, get task details (e.g., `project_management_update_task`)
+- 👥 **CRM** (4 tools): search, add, update, delete customers (e.g., `customer_relationship_manager_search_customers`)
+- 🔍 **Company Directory** (1 tool): `company_directory_find_email_address` - case-insensitive name lookup, always available
 
 ### Example Tasks
 
@@ -84,13 +200,13 @@ Each task is a natural language request that the model must complete using the a
     },
     {
       "role": "user", 
-      "content": "Reply to carlos's last email about 'Task Update on Develop prototype for report generation' with 'Thanks for the update - I will get back to you tomorrow.'"
+      "content": "Send an email to john.smith@atlas.com with the subject 'Team Meeting' and body 'Let's meet tomorrow at 2pm to discuss the project.'"
     }
   ],
   "tools": [
-    {"type": "function", "name": "email_reply_email", "description": "Replies to an email by its ID.", "parameters": {"type": "object", "properties": {"email_id": {"type": "string"}, "body": {"type": "string"}}, "required": ["email_id", "body"]}},
+    {"type": "function", "name": "email_send_email", "description": "Sends an email to a recipient.", "parameters": {"type": "object", "properties": {"recipient": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}}, "required": ["recipient", "subject", "body"]}},
     {"type": "function", "name": "email_search_emails", "description": "Searches for emails matching the given query...", "parameters": {...}},
-    {"type": "function", "name": "email_send_email", "...": "..."},
+    {"type": "function", "name": "calendar_create_event", "...": "..."},
     // ... 23 more tools (calendar, analytics, project_management, CRM)
   ],
   "parallel_tool_calls": false,
@@ -98,11 +214,11 @@ Each task is a natural language request that the model must complete using the a
 }
 ```
 
-**Expected output:** `email_reply_email(email_id="00000057", body="Thanks for the update - I will get back to you tomorrow.")`
+**Expected output:** `email_send_email(recipient="alex.martinez@atlas.com", subject="Team Meeting", body="Let's meet tomorrow at 2pm to discuss the project.")`
 
 ---
 
-**Multi-Step Task** (3 tool calls needed):
+**Multi-Step Task** (requires 3-6 tool calls):
 
 ```json
 {
@@ -128,13 +244,22 @@ Each task is a natural language request that the model must complete using the a
 ```
 
 **Expected output sequence:**
-1. `customer_relationship_manager_update_customer(customer_id="00000095", field="assigned_to_email", new_value="john.smith@atlas.com")`
-2. `customer_relationship_manager_update_customer(customer_id="00000080", field="assigned_to_email", new_value="john.smith@atlas.com")`
-3. `customer_relationship_manager_update_customer(customer_id="00000035", field="assigned_to_email", new_value="john.smith@atlas.com")`
+1. `company_directory_find_email_address(name="Akira")` → Returns `"akira.tanaka@atlas.com"`
+2. `company_directory_find_email_address(name="John")` → Returns `"john.smith@atlas.com"`
+3. `customer_relationship_manager_search_customers(assigned_to_email="akira.tanaka@atlas.com", product_interest="software", status="lead")` → Returns 3 matching leads
+4. `customer_relationship_manager_update_customer(customer_id="00000095", field="assigned_to_email", new_value="john.smith@atlas.com")`
+5. `customer_relationship_manager_update_customer(customer_id="00000080", field="assigned_to_email", new_value="john.smith@atlas.com")`
+6. `customer_relationship_manager_update_customer(customer_id="00000035", field="assigned_to_email", new_value="john.smith@atlas.com")`
+
+This task demonstrates:
+- **Name resolution**: Looking up email addresses from natural names
+- **Search with multiple filters**: Finding customers by assignee, product interest, and status
+- **Batch updates**: Iterating through results to update multiple records
+- **State verification**: Final database state will match ground truth even if different search parameters or ordering were used
 
 ---
 
-The model must:
+Generally, the model must:
 1. Understand the user's intent from natural language
 2. Determine which tools to call and in what order
 3. Infer correct parameters (e.g., look up email addresses, find matching customer records)
@@ -198,6 +323,8 @@ The model must:
 
 ### Step 1: Enter a GPU Node
 
+**Estimated Time:** ~5 minutes
+
 Launch an interactive Slurm session to run training commands. See the [NeMo RL Cluster Setup documentation](https://docs.nvidia.com/nemo/rl/latest/cluster.html#interactive-launching) for full details.
 
 ```bash
@@ -223,6 +350,8 @@ bash <SLURM_JOB_ID>-attach.sh
 
 ### Step 2: Clone and Setup NeMo RL + NeMo Gym
 
+**Estimated Time:** ~15-20 minutes
+
 ```bash
 # Navigate to your workspace
 cd /shared/filesystem/$USER
@@ -245,6 +374,8 @@ uv sync --group={build,docs,dev,test} --extra penguin
 ```
 
 ### Step 3: Prepare NeMo Gym Data
+
+**Estimated Time:** ~5-10 minutes
 
 The Workplace Assistant dataset must be downloaded from HuggingFace and prepared for training. This is a two-step process:
 
@@ -276,12 +407,13 @@ cd ../../.. && source /opt/nemo_rl_venv/bin/activate
 
 > **Note**: The `download_workplace_assistant.py` script downloads the dataset from HuggingFace (`nvidia/Nemotron-RL-agent-workplace_assistant`) and splits it into training (1,129 samples) and validation (126 samples) sets with a 90/10 ratio. The `ng_prepare_data` command then validates the data format and adds an `agent_ref` property to each example that tells NeMo Gym which agent server to route that example to.
 
-### Step 4: Run Sanity Tests (Optional but Recommended)
+### Step 4: Run Sanity Tests (optional but recommended)
+
+**Estimated Time:** ~10-15 minutes
 
 Validate your setup before training:
 
 ```bash
-# This will take 10-15 minutes
 HF_HOME=.cache/ \
 HF_TOKEN=${HF_TOKEN} \
     ./examples/penguin/run_penguin_single_node_sanity_tests.sh
@@ -348,7 +480,9 @@ env:
 
 ## Running Training
 
-### Single Node Training (Interactive Mode)
+### Single Node Training (interactive mode)
+
+**Estimated Time:** ~2-4 hours
 
 Run these commands **from inside the container** after attaching via the interactive session from Step 1:
 
@@ -368,7 +502,9 @@ CONFIG_PATH=examples/penguin/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml
 # Set these environment variables before running:
 #   HF_TOKEN: Your Hugging Face token for model downloads
 #   WANDB_API_KEY: Your Weights & Biases API key for logging
-#   TORCH_CUDA_ARCH_LIST: CUDA architectures (9.0 for H100, 10.0 for B100/GH200)
+#   TORCH_CUDA_ARCH_LIST: CUDA architectures compute capability
+<!-- @import "[TOC]" {cmd="toc" depthFrom=1 depthTo=6 orderedList=false} -->
+
 #   NRL_FORCE_REBUILD_VENVS: Set to true on first run to rebuild venvs
 TORCH_CUDA_ARCH_LIST="9.0 10.0" \
 HF_HOME=.cache/ \
@@ -517,6 +653,4 @@ After completing this tutorial, explore:
 
 The complete training configuration is available at:
 
-```
-examples/penguin/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml
-```
+[`examples/penguin/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml`](https://github.com/NVIDIA-NeMo/RL/blob/main/examples/penguin/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml)
