@@ -1,39 +1,39 @@
-# GRPO Training with NeMo RL: Workplace Assistant on Nemotron Nano v2 9B
+# GRPO Training with NeMo RL: Multi-step tool calling  on Nemotron Nano v2 9B
 
 ## Overview
 
-This tutorial demonstrates how to train NVIDIA's Nemotron Nano v2 9B model using **GRPO (Group Relative Policy Optimization)** with the **Workplace Assistant** environment in NeMo Gym. By the end of this tutorial, you will have trained a language model to perform multi-step tool-calling tasks in a realistic office productivity setting.
+This tutorial demonstrates how to train NVIDIA [Nemotron Nano v2 9B](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-9B-v2) model using **GRPO (Group Relative Policy Optimization)** with the **Workplace Assistant** environment in NeMo Gym. By the end of this tutorial, you will have trained a language model to perform multi-step tool-calling tasks in a realistic office productivity setting.
 
-**Why this matters:** Tool-calling is a critical capability for enterprise AI assistants. The Workplace Assistant environment provides a realistic simulation with 26 different tools (calendar, email, file management, etc.), enabling you to train models that can complete complex multi-step office tasks—a key differentiator for production-ready AI systems.
+**Why this matters:** Tool-calling is a critical capability for enterprise AI assistants. The Workplace Assistant environment provides a realistic simulation with various different tools (calendar, email, file management, etc.), enabling you to train models that can complete complex multi-step office tasks.
 
----
+**Total time estimate:** ~3-5 hours (including environment setup, data preparation, and training)
 
-## Time Estimate
-
-**Total time: ~3-5 hours** (including environment setup, data preparation, and training)
+> **TL;DR:** Want to jump straight to running commands? Skip to [Setup Instructions](#setup-instructions) or [Running Training](#running-training).
 
 ---
 
 ## Objectives
 
-By completing this tutorial, you will:
+In this tutorial, you will:
 
 1. Set up NeMo RL and NeMo Gym for Reinforcement Learning (RL) training
-2. Understand the Workplace Assistant environment and its 26 tool-calling capabilities
-3. Configure and run GRPO training on Nemotron Nano v2 9B
+2. Understand the Workplace Assistant environment and its multi-step tool calling capability
+3. Configure and run GRPO training on Nemotron Nano v2 9B using this environment in Gym
 4. Monitor training progress via Weights & Biases (W&B)
 
 ---
 
 ## Prerequisites
 
-### Technical Level & Required Knowledge: Intermediate to Advanced
+### Required Knowledge: 
+
+- This tutorial applies to users of Intermediate technical level
 - You should be comfortable with Python, LLM fine-tuning, and basic reinforcement learning concepts such as policy optimization, rewards, and rollouts. While detailed knowledge of RLVR and the GRPO algorithm is not required, a general understanding is helpful.
 - Some basic knowledge of Slurm is helpful. That said, example commands are provided below.
 
 ### Hardware Requirements
 
-**Minimum** 8× NVIDIA GPUs with 80GB or more VRAM each (e.g., H100, A100). 
+**Minimum** 1 node of 8× NVIDIA GPUs with 80GB or more memory each (e.g., H100, A100) is required.
 
 NeMo Gym does not require GPUs. GPUs are only necessary for GRPO training with NeMo RL.
 
@@ -59,7 +59,7 @@ The Workplace Assistant is a **multi-step agentic tool-use environment** that te
 - **690 tasks** representing common business activities (e.g., sending emails, scheduling meetings, managing projects)
 - **State-based verification**: Evaluates task completion by comparing final database states rather than exact action sequences
 
-### FastAPI Resource Server (`app.py`)
+### Resource Server (`app.py`)
 
 The environment is implemented as a FastAPI-based resource server that manages tool execution and verification. Here's how it works:
 
@@ -251,71 +251,19 @@ Each task is a natural language request that the model must complete using the a
 5. `customer_relationship_manager_update_customer(customer_id="00000080", field="assigned_to_email", new_value="john.smith@atlas.com")`
 6. `customer_relationship_manager_update_customer(customer_id="00000035", field="assigned_to_email", new_value="john.smith@atlas.com")`
 
-This task demonstrates:
+**This task demonstrates:**
 - **Name resolution**: Looking up email addresses from natural names
 - **Search with multiple filters**: Finding customers by assignee, product interest, and status
 - **Batch updates**: Iterating through results to update multiple records
 - **State verification**: Final database state will match ground truth even if different search parameters or ordering were used
 
----
 
-Generally, the model must:
+
+**Generally, the model must:**
 1. Understand the user's intent from natural language
 2. Determine which tools to call and in what order
 3. Infer correct parameters (e.g., look up email addresses, find matching customer records)
 4. Execute all necessary steps to complete the task
-
----
-
-## Workflow Diagram
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        GRPO Training Pipeline                               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌──────────┐    ┌──────────────┐    ┌───────────────┐    ┌──────────────┐  │
-│  │ 1. Setup │───▶│ 2. Prepare   │───▶│ 3. Configure  │───▶│ 4. Training  │  │
-│  │   Env    │    │    Data      │    │    GRPO       │    │    Loop      │  │
-│  └──────────┘    └──────────────┘    └───────────────┘    └──────────────┘  │
-│       │                │                    │                    │          │
-│       ▼                ▼                    ▼                    ▼          │
-│  ┌──────────┐    ┌──────────────┐    ┌───────────────┐    ┌──────────────┐  │
-│  │ NeMo RL  │    │  Workplace   │    │  Model: 9B    │    │  Generate    │  │
-│  │ NeMo Gym │    │  Assistant   │    │  TP=8, 32K    │    │  4 samples   │  │
-│  │ venv     │    │  1,129 samples │    │  context      │    │  per prompt  │  │
-│  └──────────┘    └──────────────┘    └───────────────┘    └──────────────┘  │
-│                                                                    │        │
-│                                      ┌─────────────────────────────┘        │
-│                                      ▼                                      │
-│                               ┌──────────────┐    ┌──────────────┐          │
-│                               │ 5. Evaluate  │───▶│ 6. Update    │          │
-│                               │    Rewards   │    │    Policy    │          │
-│                               └──────────────┘    └──────────────┘          │
-│                                      │                    │                 │
-│                                      ▼                    ▼                 │
-│                               ┌──────────────┐    ┌──────────────┐          │
-│                               │ Environment  │    │ GRPO Loss    │          │
-│                               │ verifies     │    │ Leave-one-   │          │
-│                               │ tool calls   │    │ out baseline │          │
-│                               └──────────────┘    └──────────────┘          │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Workflow Steps Explained
-
-1. **Setup Environment**: Install NeMo RL and NeMo Gym, activate the Python virtual environment, and verify GPU access.
-
-2. **Prepare Data**: Load the Workplace Assistant dataset containing 1,129 training tasks that require multi-step tool calling.
-
-3. **Configure GRPO**: Set model parameters (Nemotron Nano v2 9B with tensor parallelism of 8), training hyperparameters, and environment-specific settings.
-
-4. **Training Loop**: For each batch, generate 4 completions per prompt using vLLM for fast inference.
-
-5. **Evaluate Rewards**: The Workplace Assistant environment verifies tool calls and task completion, assigning rewards (0 or 1) based on success.
-
-6. **Update Policy**: Apply GRPO loss using leave-one-out baseline to reduce variance and update model weights.
 
 ---
 
@@ -576,10 +524,10 @@ The best checkpoint (highest `val:accuracy`) is retained based on `checkpointing
 ### Success Criteria
 
 Training is successful when:
-- ✅ Reward mean increases consistently over steps
-- ✅ Validation accuracy improves from baseline (~15%) to 50%+
-- ✅ No OOM (Out of Memory) errors
-- ✅ Checkpoints are saved at specified intervals
+- Reward mean increases consistently over steps
+- Validation accuracy improves from baseline (~15%) to 50%+
+- No OOM (Out of Memory) errors
+- Checkpoints are saved at specified intervals
 
 ### Validation Reward Plot
 
@@ -587,17 +535,11 @@ Training is successful when:
 ![Validation Reward Plot](images/val_reward_placeholder.png)
 *Expected: Validation reward increasing from ~0.15 to ~0.5+ over the course of training.*
 
-### Measuring Real-World Improvement with BFCL v3
+### Measuring Real-World Improvement
 
-The Workplace Assistant environment's tool-calling tasks correlate with performance on the [Berkeley Function Calling Leaderboard (BFCL) v3](https://gorilla.cs.berkeley.edu/leaderboard.html) benchmark. To measure real-world improvement:
+The Workplace Assistant environment's tool-calling tasks correlate with performance on the [Berkeley Function Calling Leaderboard (BFCL) v3](https://gorilla.cs.berkeley.edu/leaderboard.html) benchmark. To measure improvement, evaluate the Nemotron Nano v2 9B model on BFCL v3 before and after training and compare.  You should observe measurable improvement in tool-calling accuracy
 
-1. **Before training**: Evaluate the base Nemotron Nano v2 9B model on BFCL v3
-2. **After training**: Evaluate your fine-tuned checkpoint on BFCL v3
-3. **Compare**: You should observe measurable improvement in tool-calling accuracy
-
-You can run BFCL v3 evaluations using [NeMo Evaluator](https://github.com/NVIDIA-NeMo/Evaluator), which supports BFCL v3 via the `nemo-skills` evaluation harness.
-
-See the [NeMo Evaluator documentation](https://github.com/NVIDIA-NeMo/Evaluator#-supported-benchmarks-and-evaluation-harnesses) for full setup instructions and supported benchmarks.
+You can run BFCL v3 evaluations using [NeMo Evaluator](https://github.com/NVIDIA-NeMo/Evaluator), which supports BFCL v3. See the [NeMo Evaluator docs](https://github.com/NVIDIA-NeMo/Evaluator#-supported-benchmarks-and-evaluation-harnesses) for full setup instructions and supported benchmarks.
 
 ---
 
