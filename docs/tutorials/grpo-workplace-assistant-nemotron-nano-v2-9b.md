@@ -417,6 +417,9 @@ env:
 | `adam_beta1` / `adam_beta2` | 0.9 / 0.999 | Adam hyperparameters |
 | `clip_grad` | 1.0 | Gradient clipping threshold |
 
+The complete training configuration is available at:
+[`examples/nemo_gym/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml`](https://github.com/NVIDIA-NeMo/RL/blob/main/examples/nemo_gym/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml)
+
 ---
 
 ## Running Training
@@ -441,17 +444,12 @@ CONFIG_PATH=examples/nemo_gym/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml
 
 # Launch training
 # Set these environment variables before running:
-#   HF_TOKEN: Your Hugging Face token for model downloads
-#   WANDB_API_KEY: Your Weights & Biases API key for logging
-#   TORCH_CUDA_ARCH_LIST: CUDA architectures compute capability
-<!-- @import "[TOC]" {cmd="toc" depthFrom=1 depthTo=6 orderedList=false} -->
-
-#   NRL_FORCE_REBUILD_VENVS: Set to true on first run to rebuild venvs
 TORCH_CUDA_ARCH_LIST="9.0 10.0" \
 HF_HOME=.cache/ \
-HF_TOKEN="your_hugging_face_token" \
-WANDB_API_KEY="your_wandb_api_key" \
+HF_TOKEN="YOUR_HUGGINGFACE_TOKEN" \
+WANDB_API_KEY="YOUR_WANDB_API_KEY" \
 NRL_FORCE_REBUILD_VENVS=true \
+VLLM_LOGGING_LEVEL=ERROR \
 uv run python examples/nemo_gym/run_grpo_nemo_gym.py \
     --config=$CONFIG_PATH \
     logger.wandb.project="${USER}-nemo-gym-rl-integration" \
@@ -459,9 +457,10 @@ uv run python examples/nemo_gym/run_grpo_nemo_gym.py \
     logger.log_dir=results/$EXP_NAME
 ```
 
+
 ### Multi-Node Training
 
-For production training, scale to multiple nodes by changing `cluster.num_nodes`. This example uses **batch mode** (the `COMMAND` variable specifies what to run automatically when the job starts).
+Scale to multiple nodes by changing `cluster.num_nodes`. This example uses **batch mode** (the `COMMAND` variable specifies what to run automatically when the job starts).
 
 > **Note**: Run this command from the **Slurm login/head node**, not from inside the interactive container from Step 1. This submits a new batch job that will run independently.
 
@@ -470,13 +469,8 @@ For production training, scale to multiple nodes by changing `cluster.num_nodes`
 EXP_NAME="nemo_gym_grpo/nemotron_nano_v2_9b/2nodes/workplace_assistant_001"
 CONFIG_PATH=examples/nemo_gym/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml
 
-# Submit multi-node job
-# Set these environment variables before running:
-#   HF_TOKEN: Your Hugging Face token for model downloads
-#   WANDB_API_KEY: Your Weights & Biases API key for logging
-#   NUM_NODES: Number of GPU nodes to use (2, 4, 8, etc.)
 NUM_NODES=2
-COMMAND="TORCH_CUDA_ARCH_LIST='9.0 10.0' HF_HOME=.cache/ HF_TOKEN='your_hf_token' WANDB_API_KEY='your_wandb_api_key' uv run python examples/nemo_gym/run_grpo_nemo_gym.py --config=$CONFIG_PATH cluster.num_nodes=$NUM_NODES logger.wandb.project=${USER}-nemo-gym-rl-integration logger.wandb.name=$EXP_NAME logger.log_dir=results/$EXP_NAME checkpointing.checkpoint_dir=results/$EXP_NAME" \
+COMMAND="TORCH_CUDA_ARCH_LIST='9.0 10.0' HF_HOME=.cache/ HF_TOKEN='YOUR_HUGGINGFACE_TOKEN' WANDB_API_KEY='YOUR_WANDB_API_KEY' NRL_FORCE_REBUILD_VENVS=true VLLM_LOGGING_LEVEL=ERROR uv run python examples/nemo_gym/run_grpo_nemo_gym.py --config=$CONFIG_PATH cluster.num_nodes=$NUM_NODES logger.wandb.project=${USER}-nemo-gym-rl-integration logger.wandb.name=$EXP_NAME logger.log_dir=results/$EXP_NAME checkpointing.checkpoint_dir=results/$EXP_NAME" \
 CONTAINER=nvcr.io/nvidia/nemo-rl:v0.4.0 \
 MOUNTS="/shared/filesystem:/shared/filesystem" \
 sbatch \
@@ -583,6 +577,3 @@ After completing this tutorial, explore:
 
 ## Appendix: Full Configuration Reference
 
-The complete training configuration is available at:
-
-[`examples/nemo_gym/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml`](https://github.com/NVIDIA-NeMo/RL/blob/main/examples/nemo_gym/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml)
