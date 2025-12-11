@@ -263,27 +263,33 @@ Each task is a natural language request that the model must complete using the a
 
 **Estimated Time:** ~5 minutes
 
-Launch an interactive Slurm session to run training commands. See the [NeMo RL Cluster Setup documentation](https://docs.nvidia.com/nemo/rl/latest/cluster.html#interactive-launching) for full details.
+Launch an interactive Slurm session to run training commands. See the [NeMo RL Cluster Setup documentation](https://docs.nvidia.com/nemo/rl/latest/cluster.html#interactive-launching) for more details.
 
 ```bash
-# Run from the root of NeMo RL repo
 NUM_ACTOR_NODES=1
+ACCOUNT=<ACCOUNT_NAME>
+JOB_NAME=<JOB_NAME>
+PARTITION=<PARTITION>
 
 # Use the official NeMo RL container from NGC
 # See: https://catalog.ngc.nvidia.com/orgs/nvidia/containers/nemo-rl
-CONTAINER=nvcr.io/nvidia/nemo-rl:v0.4.0 \
-MOUNTS="/shared/filesystem:/shared/filesystem" \
-sbatch \
+CONTAINER=nvcr.io/nvidia/nemo-rl:v0.4.0
+CONTAINER_WORKDIR=$PWD
+MOUNTS="$PWD:$PWD"
+srun \
     --nodes=${NUM_ACTOR_NODES} \
-    --account=your_slurm_account \
-    --job-name=grpo-interactive \
-    --partition=interactive \
+    --ntasks=1 \
+    --account=${ACCOUNT} \
+    --job-name=${JOB_NAME} \
+    --partition=${PARTITION} \
     --time=04:00:00 \
     --gres=gpu:8 \
-    ray.sub
-
-# Once the job starts, attach to the head node:
-bash <SLURM_JOB_ID>-attach.sh
+    --no-container-mount-home \
+    --container-name=nemo-gym \
+    --container-mounts="${MOUNTS}" \
+    --container-image="${CONTAINER}" \
+    --container-workdir=$CONTAINER_WORKDIR \
+    --pty /bin/bash
 ```
 
 ### Step 2: Clone and Setup NeMo RL + NeMo Gym
@@ -291,9 +297,6 @@ bash <SLURM_JOB_ID>-attach.sh
 **Estimated Time:** ~15-20 minutes
 
 ```bash
-# Navigate to your workspace
-cd /shared/filesystem/$USER
-
 # Clone NeMo RL repository
 git clone https://github.com/NVIDIA-NeMo/RL
 cd RL
@@ -304,11 +307,15 @@ git clone https://github.com/NVIDIA-NeMo/Gym.git 3rdparty/Penguin-workspace/Peng
 # Initialize all submodules (Megatron, AutoModel, etc.)
 git submodule update --init --recursive
 
+# This will remove any stale cached Ray venv and rebuilt it
+# TODO: This is a WAR. Need a formal fix.
+rm -rf /opt/ray_venvs/*
+
 # Activate the NeMo RL virtual environment
 source /opt/nemo_rl_venv/bin/activate
 
 # Install dependencies
-uv sync --group={build,docs,dev,test} --extra penguin
+uv sync --group={build,docs,dev,test} --extra nemo_gym
 ```
 
 ### Step 3: Prepare NeMo Gym Data
@@ -317,33 +324,29 @@ uv sync --group={build,docs,dev,test} --extra penguin
 
 The Workplace Assistant dataset must be downloaded from HuggingFace and prepared for training. This is a two-step process:
 
-1. **Download & Split**: Download the dataset from HuggingFace and split into train/validation sets
-2. **Prepare Data**: Run `ng_prepare_data` to validate and add agent references
+This runs `ng_prepare_data` to download and validate the dataset, and to add an `agent_ref` property to each example that tells NeMo Gym which agent server should handle that example.
 
 ```bash
+HF_TOKEN=SPECIFY_HF_TOKEN
+
 # Setup Penguin local venv
 cd 3rdparty/Penguin-workspace/Penguin
 uv venv --python 3.12 --allow-existing
 source .venv/bin/activate
 uv sync --active --extra dev
 
-# Step 1: Download and split the dataset from HuggingFace (90/10 train/val split)
-python download_workplace_assistant.py
-
-# Step 2: Prepare data for training (validates format and adds agent_ref to each sample)
 config_paths="responses_api_models/vllm_model/configs/vllm_model_for_training.yaml,\
 resources_servers/workplace_assistant/configs/workplace_assistant.yaml"
 
 ng_prepare_data "+config_paths=[${config_paths}]" \
     +output_dirpath=resources_servers/workplace_assistant/data \
     +mode=train_preparation \
-    +should_download=false
+    +hf_token=$HF_TOKEN \
+    +should_download=true
 
 # Return to NeMo RL directory and Python env
 cd ../../.. && source /opt/nemo_rl_venv/bin/activate
 ```
-
-> **Note**: The `download_workplace_assistant.py` script downloads the dataset from HuggingFace (`nvidia/Nemotron-RL-agent-workplace_assistant`) and splits it into training (1,129 samples) and validation (126 samples) sets with a 90/10 ratio. The `ng_prepare_data` command then validates the data format and adds an `agent_ref` property to each example that tells NeMo Gym which agent server to route that example to.
 
 ### Step 4: Run Sanity Tests (optional but recommended)
 
@@ -354,7 +357,7 @@ Validate your setup before training:
 ```bash
 HF_HOME=.cache/ \
 HF_TOKEN=${HF_TOKEN} \
-    ./examples/penguin/run_penguin_single_node_sanity_tests.sh
+    ./examples/nemo_gym/run_nemo_gym_single_node_sanity_tests.sh
 ```
 
 > **Note**: If you've run these tests before and encounter HuggingFace rate limit errors, add `HF_HUB_OFFLINE=1` to the command.
