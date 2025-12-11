@@ -329,8 +329,8 @@ This runs `ng_prepare_data` to download and validate the dataset, and to add an 
 ```bash
 HF_TOKEN=SPECIFY_HF_TOKEN
 
-# Setup Penguin local venv
-cd 3rdparty/Penguin-workspace/Penguin
+# Setup Gym local venv
+cd 3rdparty/Gym-workspace/Gym
 uv venv --python 3.12 --allow-existing
 source .venv/bin/activate
 uv sync --active --extra dev
@@ -369,14 +369,14 @@ HF_TOKEN=${HF_TOKEN} \
 ### Key Configuration Parameters
 
 The training configuration file is located at:
-`examples/penguin/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml`
+`examples/nemo_gym/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml`
 
 #### Environment Configuration
 
 ```yaml
 env:
-  should_use_penguin: true
-  penguin:
+  should_use_nemo_gym: true
+  nemo_gym:
     config_paths:
     - responses_api_models/vllm_model/configs/vllm_model_for_training.yaml
     - resources_servers/workplace_assistant/configs/workplace_assistant.yaml
@@ -434,10 +434,10 @@ ray stop --force
 python -c "import ray; ray.shutdown()"
 
 # Set experiment name with timestamp
-EXP_NAME="$(date +%Y%m%d)/penguin_grpo/nemotron_nano_v2_9b/workplace_assistant_001"
+EXP_NAME="$(date +%Y%m%d)/nemo_gym_grpo/nemotron_nano_v2_9b/workplace_assistant_001"
 
 # Configuration file path
-CONFIG_PATH=examples/penguin/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml
+CONFIG_PATH=examples/nemo_gym/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml
 
 # Launch training
 # Set these environment variables before running:
@@ -452,7 +452,7 @@ HF_HOME=.cache/ \
 HF_TOKEN="your_hugging_face_token" \
 WANDB_API_KEY="your_wandb_api_key" \
 NRL_FORCE_REBUILD_VENVS=true \
-uv run python examples/penguin/run_grpo_penguin.py \
+uv run python examples/nemo_gym/run_grpo_nemo_gym.py \
     --config=$CONFIG_PATH \
     logger.wandb.project="${USER}-nemo-gym-rl-integration" \
     logger.wandb.name=$EXP_NAME \
@@ -467,8 +467,8 @@ For production training, scale to multiple nodes by changing `cluster.num_nodes`
 
 ```bash
 # Set experiment name
-EXP_NAME="penguin_grpo/nemotron_nano_v2_9b/2nodes/workplace_assistant_001"
-CONFIG_PATH=examples/penguin/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml
+EXP_NAME="nemo_gym_grpo/nemotron_nano_v2_9b/2nodes/workplace_assistant_001"
+CONFIG_PATH=examples/nemo_gym/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml
 
 # Submit multi-node job
 # Set these environment variables before running:
@@ -476,7 +476,7 @@ CONFIG_PATH=examples/penguin/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml
 #   WANDB_API_KEY: Your Weights & Biases API key for logging
 #   NUM_NODES: Number of GPU nodes to use (2, 4, 8, etc.)
 NUM_NODES=2
-COMMAND="TORCH_CUDA_ARCH_LIST='9.0 10.0' HF_HOME=.cache/ HF_TOKEN='your_hf_token' WANDB_API_KEY='your_wandb_api_key' uv run python examples/penguin/run_grpo_penguin.py --config=$CONFIG_PATH cluster.num_nodes=$NUM_NODES logger.wandb.project=${USER}-nemo-gym-rl-integration logger.wandb.name=$EXP_NAME logger.log_dir=results/$EXP_NAME checkpointing.checkpoint_dir=results/$EXP_NAME" \
+COMMAND="TORCH_CUDA_ARCH_LIST='9.0 10.0' HF_HOME=.cache/ HF_TOKEN='your_hf_token' WANDB_API_KEY='your_wandb_api_key' uv run python examples/nemo_gym/run_grpo_nemo_gym.py --config=$CONFIG_PATH cluster.num_nodes=$NUM_NODES logger.wandb.project=${USER}-nemo-gym-rl-integration logger.wandb.name=$EXP_NAME logger.log_dir=results/$EXP_NAME checkpointing.checkpoint_dir=results/$EXP_NAME" \
 CONTAINER=nvcr.io/nvidia/nemo-rl:v0.4.0 \
 MOUNTS="/shared/filesystem:/shared/filesystem" \
 sbatch \
@@ -585,4 +585,4 @@ After completing this tutorial, explore:
 
 The complete training configuration is available at:
 
-[`examples/penguin/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml`](https://github.com/NVIDIA-NeMo/RL/blob/main/examples/penguin/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml)
+[`examples/nemo_gym/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml`](https://github.com/NVIDIA-NeMo/RL/blob/main/examples/nemo_gym/grpo_workplace_assistant_nemotron_nano_v2_9b.yaml)
