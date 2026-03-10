@@ -1,0 +1,67 @@
+(env-real-world-data-generation)=
+
+# Generating Training Data
+
+Generate synthetic training data for the {doc}`Workplace Assistant <real-world-environment>` environment using [NeMo Data Designer](https://github.com/NVIDIA-NeMo/DataDesigner). The Workplace Assistant uses 27 tools across 6 databases, and NeMo Data Designer can produce realistic multi-step user queries and agent trajectories at scale.
+
+:::{button-ref} real-world-environment
+:color: secondary
+:outline:
+:ref-type: doc
+
+< Back to Workplace Assistant
+:::
+
+---
+
+## Pipeline Overview
+
+The data generation pipeline:
+
+1. Load tool schemas for the Workplace Assistant environment
+2. Use NeMo Data Designer to generate realistic multi-step user queries
+3. Simulate agent trajectories (step-by-step tool-call solutions)
+4. Apply dual-level LLM judge filtering to ensure data quality
+5. Export training data in NeMo Gym JSONL format
+
+---
+
+## Prerequisites
+
+- **NVIDIA API Key** from [build.nvidia.com](https://build.nvidia.com) (or your own LLM endpoint)
+- **Python 3.11+**
+- Install tutorial dependencies:
+
+  ```bash
+  cd examples/multistep_toolcalling_datagen/
+  uv pip install -r requirements.txt
+  ```
+
+---
+
+## Running the Notebook
+
+The tutorial is provided as a Jupyter notebook at `examples/multistep_toolcalling_datagen/multistep-toolcalling.ipynb`.
+
+> **Important:** Run the notebook from the `examples/multistep_toolcalling_datagen/` directory so that relative imports for `tools/` and `utils/` resolve correctly.
+
+:::{button-link} https://github.com/NVIDIA-NeMo/Gym/blob/main/examples/multistep_toolcalling_datagen/multistep-toolcalling.ipynb
+:color: primary
+:class: sd-rounded-pill
+
+View Notebook on GitHub
+:::
+
+---
+
+## What's Next?
+
+After generating your training data, use it with the Workplace Assistant resources server to {doc}`collect rollouts </get-started/rollout-collection>` and then proceed to {doc}`GRPO training </training-tutorials/nemo-rl-grpo/index>`.
+
+:::{button-ref} real-world-implementation
+:color: primary
+:outline:
+:ref-type: doc
+
+Next: Resources Server Implementation >
+:::
