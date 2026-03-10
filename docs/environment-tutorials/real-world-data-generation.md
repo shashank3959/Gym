@@ -2,7 +2,9 @@
 
 # Generating Training Data
 
-Generate synthetic training data for the {doc}`Workplace Assistant <real-world-environment>` environment using [NeMo Data Designer](https://github.com/NVIDIA-NeMo/DataDesigner). The Workplace Assistant uses 27 tools across 6 databases, and NeMo Data Designer can produce realistic multi-step user queries and agent trajectories at scale.
+Generate synthetic task data (user queries) for the {doc}`Workplace Assistant <real-world-environment>` environment using [NeMo Data Designer](https://github.com/NVIDIA-NeMo/DataDesigner). 
+
+This pipeline focuses on generating tasks for use with the environment. It also simulates agent trajectories, but these are used for quality filtering and validation --- the environment itself produces the actual model responses during rollout collection. The Workplace Assistant uses 27 tools across 6 databases, and NeMo Data Designer can produce realistic multi-step user queries at scale.
 
 :::{button-ref} real-world-environment
 :color: secondary
@@ -22,7 +24,7 @@ The data generation pipeline:
 2. Use NeMo Data Designer to generate realistic multi-step user queries
 3. Simulate agent trajectories (step-by-step tool-call solutions)
 4. Apply dual-level LLM judge filtering to ensure data quality
-5. Export training data in NeMo Gym JSONL format
+5. Export task data in NeMo Gym JSONL format
 
 ---
 
@@ -30,7 +32,7 @@ The data generation pipeline:
 
 - **NVIDIA API Key** from [build.nvidia.com](https://build.nvidia.com) (or your own LLM endpoint)
 - **Python 3.11+**
-- Install tutorial dependencies:
+- Install tutorial dependencies (paths relative to the [NeMo Gym repository root](https://github.com/NVIDIA-NeMo/Gym)):
 
   ```bash
   cd examples/multistep_toolcalling_datagen/
@@ -56,7 +58,7 @@ View Notebook on GitHub
 
 ## What's Next?
 
-After generating your training data, use it with the Workplace Assistant resources server to {doc}`collect rollouts </get-started/rollout-collection>` and then proceed to {doc}`GRPO training </training-tutorials/nemo-rl-grpo/index>`.
+After generating your task data, use it with the Workplace Assistant resources server to {doc}`collect rollouts </get-started/rollout-collection>` (where the environment produces model responses) and then proceed to {doc}`GRPO training </training-tutorials/nemo-rl-grpo/index>`.
 
 :::{button-ref} real-world-implementation
 :color: primary
