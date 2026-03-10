@@ -42,14 +42,18 @@ def filter_high_quality(
     # Stage 1: user query quality
     query_is_valid = out["_query_scores"].apply(lambda x: x.get("is_valid", False)) == True  # noqa: E712
     query_feasibility_ok = out["_query_scores"].apply(lambda x: x.get("feasibility", 0)) >= min_query_feasibility
-    query_schema_ok = out["_query_scores"].apply(lambda x: x.get("schema_compliance", 0)) >= min_query_schema_compliance
+    query_schema_ok = (
+        out["_query_scores"].apply(lambda x: x.get("schema_compliance", 0)) >= min_query_schema_compliance
+    )
     query_natural_ok = out["_query_scores"].apply(lambda x: x.get("naturalness", 0)) >= min_query_naturalness
     query_passed = query_is_valid & query_feasibility_ok & query_schema_ok & query_natural_ok
 
     # Stage 2: trajectory quality
     traj_is_valid = out["_traj_scores"].apply(lambda x: x.get("is_valid", False)) == True  # noqa: E712
     traj_tool_ok = out["_traj_scores"].apply(lambda x: x.get("tool_validity", 0)) >= min_trajectory_tool_validity
-    traj_args_ok = out["_traj_scores"].apply(lambda x: x.get("argument_validity", 0)) >= min_trajectory_argument_validity
+    traj_args_ok = (
+        out["_traj_scores"].apply(lambda x: x.get("argument_validity", 0)) >= min_trajectory_argument_validity
+    )
     traj_complete_ok = out["_traj_scores"].apply(lambda x: x.get("completeness", 0)) >= min_trajectory_completeness
     traj_efficient_ok = out["_traj_scores"].apply(lambda x: x.get("efficiency", 0)) >= min_trajectory_efficiency
     traj_passed = traj_is_valid & traj_tool_ok & traj_args_ok & traj_complete_ok & traj_efficient_ok
@@ -58,16 +62,20 @@ def filter_high_quality(
 
     if verbose:
         n = len(out)
-        print(f"\n=== Quality Filtering Results ===")
+        print("\n=== Quality Filtering Results ===")
         print(f"Total records: {n}")
         print(f"\nStage 1 (User Query):  {query_passed.sum()}/{n} passed ({query_passed.mean() * 100:.0f}%)")
-        print(f"  is_valid: {query_is_valid.sum()} | feasibility>={min_query_feasibility}: {query_feasibility_ok.sum()} "
-              f"| schema>={min_query_schema_compliance}: {query_schema_ok.sum()} | naturalness>={min_query_naturalness}: {query_natural_ok.sum()}")
+        print(
+            f"  is_valid: {query_is_valid.sum()} | feasibility>={min_query_feasibility}: {query_feasibility_ok.sum()} "
+            f"| schema>={min_query_schema_compliance}: {query_schema_ok.sum()} | naturalness>={min_query_naturalness}: {query_natural_ok.sum()}"
+        )
         print(f"\nStage 2 (Trajectory): {traj_passed.sum()}/{n} passed ({traj_passed.mean() * 100:.0f}%)")
-        print(f"  is_valid: {traj_is_valid.sum()} | tool_validity>={min_trajectory_tool_validity}: {traj_tool_ok.sum()} "
-              f"| arg_validity>={min_trajectory_argument_validity}: {traj_args_ok.sum()} "
-              f"| completeness>={min_trajectory_completeness}: {traj_complete_ok.sum()} "
-              f"| efficiency>={min_trajectory_efficiency}: {traj_efficient_ok.sum()}")
+        print(
+            f"  is_valid: {traj_is_valid.sum()} | tool_validity>={min_trajectory_tool_validity}: {traj_tool_ok.sum()} "
+            f"| arg_validity>={min_trajectory_argument_validity}: {traj_args_ok.sum()} "
+            f"| completeness>={min_trajectory_completeness}: {traj_complete_ok.sum()} "
+            f"| efficiency>={min_trajectory_efficiency}: {traj_efficient_ok.sum()}"
+        )
         print(f"\nFinal: {final_passed.sum()}/{n} passed ({final_passed.mean() * 100:.0f}%)")
 
     return out[final_passed].drop(columns=["_query_scores", "_traj_scores"]).reset_index(drop=True)
