@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Utilities for dual-level quality filtering of generated datasets."""
+"""Utilities for two levels of quality filtering of generated datasets."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def filter_high_quality(
     min_trajectory_efficiency: int = 3,
     verbose: bool = True,
 ) -> pd.DataFrame:
-    """Filter generated data with dual-level quality control.
+    """Filter generated data with two levels of quality control.
 
     Stage 1 checks user-query quality.
     Stage 2 checks trajectory quality.
