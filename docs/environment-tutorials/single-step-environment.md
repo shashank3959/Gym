@@ -48,34 +48,7 @@ Run all commands from the **repository root** directory (where `pyproject.toml` 
 
 ## How It Works
 
-NeMo Gym uses a decoupled three-component architecture: the Agent Server orchestrates the loop, the Model Server runs inference, and the Resources Server provides tools and verification. All three are async FastAPI servers communicating over HTTP, which allows many rollouts to run concurrently across episodes. See {ref}`core-components` for the full architecture.
-
-```text
-                        Environment Components in NeMo Gym
-
-                    +-----------------------------------------+
-                    |            Agent Server                 |
-                    |                                         |
-                    |  run():                                 |
-                    |    1. resources.seed_session()          |
-                    |    2. multi-step/multi-turn agent loop: |
-                    |         model.responses()               |
-                    |         resources.my_tool()             |
-                    |    3. resources.verify()                |
-                    +-----------+-------------+---------------+
-                                |             |
-                                v             v
-            +----------------------+    +------------------------+
-            |    Model Server      |    |   Resources Server     |
-            |                      |    |                        |
-            |  responses():        |    |  seed_session():       |
-            |    conversation      |    |    # init env state    |
-            |    -> text, tool     |    |  my_tool():            |
-            |    calls, code, etc. |    |    # execute action    |
-            |                      |    |  verify():             |
-            |                      |    |    # evaluate -> reward|
-            +----------------------+    +------------------------+
-```
+NeMo Gym uses a decoupled three-component architecture: the **Agent Server** orchestrates the loop, the **Model Server** runs inference, and the **Resources Server** provides tools and verification. All three are async FastAPI servers communicating over HTTP, which allows many rollouts to run concurrently across episodes. See {ref}`core-components` for the full architecture and diagram.
 
 In most cases, the **Resources Server** is where your changes go: define your tool endpoints and a `verify()` method that returns a reward. NeMo Gym ships several pre-built agent servers (`simple_agent`, `swe_agents`, etc.) and model servers (`openai_model`, `vllm_model`) that you can use as-is, or you can bring your own.
 
@@ -165,11 +138,11 @@ Create `resources_servers/my_weather_tool/data/example.jsonl` with five weather 
 
 ## 3. Environment Design
 
-This section covers the key aspects of building the environment itself: creating the Resources Server, writing verification logic, and testing.
+This section covers the key aspects of building the environment itself: building or using an existing Agent server, creating the Resources Server, and writing tool and verification logic.
 
 ### 3.1 Agent Server
 
-The built-in `simple_agent` handles multi-step tool calling out of the box --- no custom agent code is needed. Here is simplified pseudocode showing the core flow ([actual implementation](https://github.com/NVIDIA-NeMo/Gym/tree/main/responses_api_agents/simple_agent)):
+While this tutorial is about a single-step environment, it still can use the built-in `simple_agent`, which handles even multi-step tool calling out of the box. No custom agent code is needed. Here is simplified pseudocode showing the core flow ([actual implementation](https://github.com/NVIDIA-NeMo/Gym/tree/main/responses_api_agents/simple_agent)):
 
 ```python
 # run() — episode lifecycle
@@ -198,10 +171,14 @@ This tutorial uses `simple_agent`. For other patterns (multi-turn correction, cu
 
 ### 3.2 Resources Server
 
-While the agent handles orchestration, the **Resources Server** is where you define what makes your environment unique. It is the backbone of tool-based interactions in NeMo Gym. It provides:
+While the agent handles orchestration, the **Resources Server** is where you define what makes your environment unique. It is the backbone of tool-based interactions in NeMo Gym.
+
+It provides:
 - **Tool implementations** --- APIs that models can call
 - **Verification logic** --- reward computation for RL
 - **Session state** --- per-episode state management (for stateful environments)
+
+Some agents may come with predefined tools, and you can use the Resources Server to supplement them with additional external tools. When building a new environment, prefer defining tools in the Resources Server rather than the Agent Server. This separation lets multiple agents share the same tool logic without duplicating it.
 
 
 Open `resources_servers/my_weather_tool/app.py` and implement:
