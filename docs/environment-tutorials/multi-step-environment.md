@@ -2,21 +2,23 @@
 
 # Multi-Step Environment
 
-This tutorial focuses on the **Resources Server** implementation for a multi-step tool-calling environment. The full workflow — task data preparation, agent/model configuration, rollout collection, and training — follows the same steps as the {doc}`main guide <index>`. What changes here is the complexity of the tools and verification logic.
+This tutorial focuses on the **Resources Server** implementation for a multi-step tool-calling environment. The full workflow — task data preparation, agent/model configuration, rollout collection, and training — follows the same steps as the {doc}`single-step tutorial <single-step-environment>`. What changes here is the complexity of the tools and verification logic.
 
-:::{button-ref} index
+:::{button-ref} single-step-environment
 :color: secondary
 :outline:
 :ref-type: doc
 
-< Previous: Building Environments
+< Previous: Single-Step Environment
 :::
 
 ---
 
 ## What You'll Build
 
-An environment with two tools: `get_synonym_value` (lookup) and `extract_synonym_values` (submit). The agent must look up values for each synonym, then submit the complete list. Reward is 1.0 for exact match, 0.0 otherwise.
+Many real tasks require a model to call tools in sequence, where the output of one call informs the next. For example: look up several pieces of information, then combine them into a final answer. This tutorial shows how to build and verify that kind of environment.
+
+The example environment has two tools: `get_synonym_value` (lookup a numeric value for a word) and `extract_synonym_values` (submit the collected values). The agent must look up values for each synonym one by one, then submit the complete list. Reward is 1.0 for exact match, 0.0 otherwise.
 
 ### Episode Flow
 
@@ -59,11 +61,13 @@ What does synonym_value mean?
 +--------------------------------------------------------------------------------+
 ```
 
+This is the `simple_agent` loop from the {doc}`single-step tutorial <single-step-environment>` in action: the model is called, it emits a `function_call`, the tool executes, the result is appended back into the conversation, and the model is called again with the updated context. This cycle repeats until the model produces a final text response or hits `max_steps`. In a multi-step environment, this iterative loop is where the agent learns to chain tool calls correctly.
+
 ---
 
 ## Implementation
 
-**File (simplified from `resources_servers/example_multi_step/app.py`, with added defensive guards):**
+**File (simplified from [`resources_servers/example_multi_step/app.py`](https://github.com/NVIDIA-NeMo/Gym/tree/main/resources_servers/example_multi_step/app.py), with added defensive guards):**
 
 ```python
 # simplified

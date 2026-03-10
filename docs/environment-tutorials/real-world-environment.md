@@ -2,7 +2,7 @@
 
 # Real-World Environment (Workplace Assistant)
 
-This tutorial focuses on the **Resources Server** implementation for a production-scale environment with multiple tools, dynamic routing, and state-based verification. The full workflow — task data preparation, agent/model configuration, rollout collection, and training — follows the same steps as the {doc}`main guide <index>`. What changes here is the scale and complexity of the Resources Server.
+This tutorial focuses on the **Resources Server** implementation for a production-scale environment with multiple tools, dynamic routing, and state-based verification. The full workflow — task data preparation, agent/model configuration, rollout collection, and training — follows the same steps as the {doc}`single-step tutorial <single-step-environment>`. What changes here is the scale and complexity of the Resources Server.
 
 :::{button-ref} stateful-environment
 :color: secondary

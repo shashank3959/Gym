@@ -2,7 +2,7 @@
 
 # Stateful Environment
 
-This tutorial focuses on the **Resources Server** implementation for environments that maintain state across tool calls within an episode. The full workflow — task data preparation, agent/model configuration, rollout collection, and training — follows the same steps as the {doc}`main guide <index>`. What changes here is the addition of per-episode session state via middleware.
+This tutorial focuses on the **Resources Server** implementation for environments that maintain state across tool calls within an episode. The full workflow — task data preparation, agent/model configuration, rollout collection, and training — follows the same steps as the {doc}`single-step tutorial <single-step-environment>`. What changes here is the addition of per-episode session state via middleware.
 
 :::{button-ref} multi-step-environment
 :color: secondary
@@ -16,7 +16,7 @@ This tutorial focuses on the **Resources Server** implementation for environment
 
 ## What You'll Build
 
-A counter environment where the agent must increment a counter and read its value. The session state (counter value) persists across tool calls within an episode using `SESSION_ID_KEY`.
+A counter environment where the user asks the agent to increment a counter by a certain amount and report the final value. The environment seeds the counter with an initial value, and the agent must call `increment_counter` and `get_counter_value` in sequence to produce the correct result. Like the multi-step tutorial, this is single-turn (one user message, multiple tool calls) — but the key difference is that the counter value lives as server-side session state that persists across tool calls within the episode, managed via `SESSION_ID_KEY`.
 
 ### Episode Flow
 
@@ -45,7 +45,7 @@ Flow (state is stored per session_id inside the ResourcesServer)
 
 ## Implementation
 
-**File (simplified from `resources_servers/example_session_state_mgmt/app.py`, with improved `seed_session` pattern):**
+**File (simplified from [`resources_servers/example_session_state_mgmt/app.py`](https://github.com/NVIDIA-NeMo/Gym/tree/main/resources_servers/example_session_state_mgmt/app.py), with improved `seed_session` pattern):**
 
 ```python
 # simplified
